@@ -18,9 +18,12 @@ logger = logging.getLogger(__name__)
 SELECTING_TEMPLATE = 1
 ENTERING_TEXT = 2
 EDITING_DATE = 3
-MAX_BOOKMARKS = 10  # Ограничение на количество закладок на пользователя
+MAX_BOOKMARKS = 10
+pdf_lock = asyncio.Lock()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if "bookmarks" in context.user_data and len(context.user_data["bookmarks"]) > MAX_BOOKMARKS:
+        context.user_data["bookmarks"] = context.user_data["bookmarks"][-MAX_BOOKMARKS:]
     message = (
         "👋 *Добро пожаловать в PDF-бот!*\n\n"
         "Выберите шаблон, введите имя клиента — и получите PDF-файл 📄\n"
@@ -109,43 +112,47 @@ async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     if context.user_data.get("state") == EDITING_DATE:
-        await edit_date(update, context)
+        await receive_new_date(update, context)
         return
 
     client_name = update.message.text.strip()
+    if len(client_name) > 50:
+        await update.message.reply_text("⚠️ Имя клиента слишком длинное (макс. 50 символов).")
+        return
+
     template_name = context.user_data["template"]
-    try:
-        template_path = config.TEMPLATES[template_name]
-        pdf_path = generate_pdf(template_path, client_name)
-        filename = f"{client_name}.pdf"
-        with open(pdf_path, "rb") as f:
-            await update.message.reply_document(document=f, filename=filename)
-
-        # Сохраняем параметры последнего документа
-        context.user_data["last_document"] = {
-            "client_name": client_name,
-            "template": template_name,
-            "date": datetime.now().strftime("%d.%m.%Y")
-        }
-
-        keyboard = [
-            [InlineKeyboardButton("📌 В закладки", callback_data="add_bookmark")],
-            [InlineKeyboardButton("📅 Изменить дату", callback_data="edit_date")],
-            [InlineKeyboardButton("📄 Новый шаблон", callback_data="select_template")],
-        ]
-        await update.message.reply_text(
-            "✅ Документ создан!\n\nВыберите действие:",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-
-        # Удаляем временный PDF-файл для экономии места
+    async with pdf_lock:
         try:
-            os.remove(pdf_path)
-        except OSError:
-            logger.warning(f"Не удалось удалить временный файл {pdf_path}")
-    except Exception as e:
-        logger.error(f"Ошибка генерации PDF: {e}")
-        await update.message.reply_text("❌ Ошибка при создании PDF.")
+            template_path = config.TEMPLATES[template_name]
+            pdf_path = generate_pdf(template_path, client_name)
+            filename = f"{client_name}.pdf"
+            with open(pdf_path, "rb") as f:
+                await update.message.reply_document(document=f, filename=filename)
+
+            context.user_data["last_document"] = {
+                "client_name": client_name,
+                "template": template_name,
+                "date": datetime.now().strftime("%d.%m.%Y")
+            }
+
+            keyboard = [[
+                InlineKeyboardButton("📌 В закладки", callback_data="add_bookmark"),
+                InlineKeyboardButton("📅 Изменить дату", callback_data="edit_date"),
+                InlineKeyboardButton("📄 Новый шаблон", callback_data="select_template"),
+            ]]
+            await update.message.reply_text(
+                "✅ Документ создан!\nВведите имя клиента для генерации следующего договора, либо выберите другое действие:",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+
+            try:
+                os.remove(pdf_path)
+            except OSError:
+                logger.warning(f"Не удалось удалить временный файл {pdf_path}")
+        except Exception as e:
+            logger.error(f"Ошибка генерации PDF: {e}")
+            await update.message.reply_text("❌ Ошибка при создании PDF.")
 
 async def add_bookmark(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -159,7 +166,7 @@ async def add_bookmark(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     if len(context.user_data["bookmarks"]) >= MAX_BOOKMARKS:
         await query.message.edit_text(
-            f"⚠️ Достигнут лимит закладок ({MAX_BOOKMARKS}). Удалите старые или перезапустите бота.",
+            f"⚠️ Достигнут лимит закладок ({MAX_BOOKMARKS}).",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]])
         )
         return
@@ -211,35 +218,35 @@ async def generate_bookmark(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     template_name = doc["template"]
     date = doc["date"]
 
-    try:
-        template_path = config.TEMPLATES[template_name]
-        pdf_path = generate_pdf(template_path, client_name, custom_date=date)
-        filename = f"{client_name}.pdf"
-        with open(pdf_path, "rb") as f:
-            await query.message.reply_document(document=f, filename=filename)
-
-        context.user_data["last_document"] = doc  # Обновляем последний документ
-        keyboard = [
-            [InlineKeyboardButton("📌 В закладки", callback_data="add_bookmark")],
-            [InlineKeyboardButton("📅 Изменить дату", callback_data="edit_date")],
-            [InlineKeyboardButton("📑 Сохраненные договоры", callback_data="show_bookmarks")],
-        ]
-        await query.message.edit_text(
-            f"✅ Документ для *{client_name}* сгенерирован!",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-
-        # Удаляем временный PDF-файл
+    async with pdf_lock:
         try:
-            os.remove(pdf_path)
-        except OSError:
-            logger.warning(f"Не удалось удалить временный файл {pdf_path}")
-    except Exception as e:
-        logger.error(f"Ошибка генерации PDF из закладки: {e}")
-        await query.message.edit_text("❌ Ошибка при создании PDF.")
+            template_path = config.TEMPLATES[template_name]
+            pdf_path = generate_pdf(template_path, client_name, custom_date=date)
+            filename = f"{client_name}.pdf"
+            with open(pdf_path, "rb") as f:
+                await query.message.reply_document(document=f, filename=filename)
 
-async def edit_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+            context.user_data["last_document"] = doc
+            keyboard = [[
+                InlineKeyboardButton("📌 В закладки", callback_data="add_bookmark"),
+                InlineKeyboardButton("📅 Изменить дату", callback_data="edit_date"),
+                InlineKeyboardButton("📄 Новый шаблон", callback_data="select_template"),
+            ]]
+            await query.message.edit_text(
+                "✅ Документ создан!\nВведите имя клиента для генерации следующего договора, либо выберите другое действие:",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+
+            try:
+                os.remove(pdf_path)
+            except OSError:
+                logger.warning(f"Не удалось удалить временный файл {pdf_path}")
+        except Exception as e:
+            logger.error(f"Ошибка генерации PDF из закладки: {e}")
+            await query.message.edit_text("❌ Ошибка при создании PDF.")
+
+async def request_new_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
     if "last_document" not in context.user_data:
@@ -265,7 +272,11 @@ async def validate_date(date_str: str) -> bool:
     except ValueError:
         return False
 
-async def edit_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def receive_new_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not update.message.text:
+        await update.message.reply_text("⚠️ Пожалуйста, введите дату.")
+        return
+
     new_date = update.message.text.strip()
     if not validate_date(new_date):
         await update.message.reply_text(
@@ -278,50 +289,59 @@ async def edit_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     client_name = document["client_name"]
     template_name = document["template"]
 
-    try:
-        template_path = config.TEMPLATES[template_name]
-        pdf_path = generate_pdf(template_path, client_name, custom_date=new_date)
-        filename = f"{client_name}.pdf"
-        with open(pdf_path, "rb") as f:
-            await update.message.reply_document(document=f, filename=filename)
-
-        context.user_data["last_document"]["date"] = new_date
-        keyboard = [
-            [InlineKeyboardButton("📌 В закладки", callback_data="add_bookmark")],
-            [InlineKeyboardButton("📅 Изменить дату", callback_data="edit_date")],
-            [InlineKeyboardButton("📄 Новый шаблон", callback_data="select_template")],
-        ]
-        await update.message.reply_text(
-            f"✅ Документ с датой {new_date} создан!",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        context.user_data["state"] = ENTERING_TEXT
-
-        # Удаляем временный PDF-файл
+    async with pdf_lock:
         try:
-            os.remove(pdf_path)
-        except OSError:
-            logger.warning(f"Не удалось удалить временный файл {pdf_path}")
-    except Exception as e:
-        logger.error(f"Ошибка генерации PDF с новой датой: {e}")
-        await update.message.reply_text("❌ Ошибка при создании PDF.")
+            template_path = config.TEMPLATES[template_name]
+            pdf_path = generate_pdf(template_path, client_name, custom_date=new_date)
+            filename = f"{client_name}.pdf"
+            with open(pdf_path, "rb") as f:
+                await update.message.reply_document(document=f, filename=filename)
 
-# === Webhook ===
+            context.user_data["last_document"]["date"] = new_date
+            keyboard = [[
+                InlineKeyboardButton("📌 В закладки", callback_data="add_bookmark"),
+                InlineKeyboardButton("📅 Изменить дату", callback_data="edit_date"),
+                InlineKeyboardButton("📄 Новый шаблон", callback_data="select_template"),
+            ]]
+            await update.message.reply_text(
+                "✅ Документ создан!\nВведите имя клиента для генерации следующего договора, либо выберите другое действие:",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            context.user_data["state"] = ENTERING_TEXT
+
+            try:
+                os.remove(pdf_path)
+            except OSError:
+                logger.warning(f"Не удалось удалить временный файл {pdf_path}")
+        except Exception as e:
+            logger.error(f"Ошибка генерации PDF с новой датой: {e}")
+            await update.message.reply_text("❌ Ошибка при создании PDF.")
+
+async def check_webhook(context: ContextTypes.DEFAULT_TYPE):
+    try:
+        webhook_info = await context.bot.get_webhook_info()
+        if webhook_info.url != config.WEBHOOK_URL:
+            logger.warning("Вебхук сброшен, восстанавливаем...")
+            await context.bot.set_webhook(url=config.WEBHOOK_URL)
+    except Exception as e:
+        logger.error(f"Ошибка проверки вебхука: {e}")
 
 async def handle_webhook(request):
     try:
         data = await request.json()
         update = Update.de_json(data, application.bot)
+        if not update:
+            logger.error("Невалидное обновление от Telegram")
+            return web.Response(status=400, text="invalid update")
         await application.process_update(update)
         return web.Response(text="ok")
     except Exception as e:
-        logger.exception("Ошибка вебхука:")
+        logger.error(f"Ошибка вебхука: {str(e)}")
         return web.Response(status=500, text="error")
 
 async def home(request):
     return web.Response(text="Бот работает!")
-
-# === Запуск ===
 
 async def main():
     global application
@@ -336,12 +356,13 @@ async def main():
     application.add_handler(CallbackQueryHandler(add_bookmark, pattern="add_bookmark"))
     application.add_handler(CallbackQueryHandler(show_bookmarks, pattern="show_bookmarks"))
     application.add_handler(CallbackQueryHandler(generate_bookmark, pattern="generate_bookmark_.*"))
-    application.add_handler(CallbackQueryHandler(edit_date, pattern="edit_date"))
+    application.add_handler(CallbackQueryHandler(request_new_date, pattern="edit_date"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receive_text))
 
     await application.initialize()
     await application.bot.set_webhook(url=config.WEBHOOK_URL)
     await application.start()
+    application.job_queue.run_repeating(check_webhook, interval=600)
 
     app = web.Application()
     app.router.add_post("/telegram", handle_webhook)
