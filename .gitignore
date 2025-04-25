@@ -1,7 +1,6 @@
 __pycache__/
 *.pyc
-.env
 *.pdf
+.env
+config.py
 *.log
-.idea/
-.vscode/
