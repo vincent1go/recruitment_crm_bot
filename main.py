@@ -34,7 +34,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             InlineKeyboardButton("📄 Выбрать шаблон", callback_data="select_template"),
             InlineKeyboardButton("ℹ️ О боте", callback_data="about"),
         ],
-        [InlineKeyboardButton("📑 Сохраненные договоры", callback_data="show_bookmarks")]
+        [InlineKeyboardButton("💾 Сохраненные", callback_data="show_bookmarks")]
     ]
     await update.message.reply_text(message, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -59,7 +59,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             InlineKeyboardButton("📄 Выбрать шаблон", callback_data="select_template"),
             InlineKeyboardButton("ℹ️ О боте", callback_data="about"),
         ],
-        [InlineKeyboardButton("📑 Сохраненные договоры", callback_data="show_bookmarks")]
+        [InlineKeyboardButton("💾 Сохраненные", callback_data="show_bookmarks")]
     ]
     await query.message.edit_text(message, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -99,7 +99,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await query.message.edit_text("❌ Отменено. Выберите действие:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([
         [InlineKeyboardButton("📄 Выбрать шаблон", callback_data="select_template")],
         [InlineKeyboardButton("ℹ️ О боте", callback_data="about")],
-        [InlineKeyboardButton("📑 Сохраненные договоры", callback_data="show_bookmarks")]
+        [InlineKeyboardButton("💾 Сохраненные", callback_data="show_bookmarks")]
     ]))
 
 async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -135,11 +135,17 @@ async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 "date": datetime.now().strftime("%d.%m.%Y")
             }
 
-            keyboard = [[
-                InlineKeyboardButton("📌 В закладки", callback_data="add_bookmark"),
-                InlineKeyboardButton("📅 Изменить дату", callback_data="edit_date"),
-                InlineKeyboardButton("📄 Новый шаблон", callback_data="select_template"),
-            ]]
+            keyboard = [
+                [
+                    InlineKeyboardButton("📌 В закладки", callback_data="add_bookmark"),
+                    InlineKeyboardButton("📅 Изменить дату", callback_data="edit_date"),
+                ],
+                [
+                    InlineKeyboardButton("📄 К шаблонам", callback_data="select_template"),
+                    InlineKeyboardButton("💾 Сохраненные", callback_data="show_bookmarks"),
+                ],
+                [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+            ]
             await update.message.reply_text(
                 "✅ Документ создан!\nВведите имя клиента для генерации следующего договора, либо выберите другое действие:",
                 parse_mode="Markdown",
@@ -177,7 +183,7 @@ async def add_bookmark(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"📌 Документ для *{document['client_name']}* добавлен в закладки!",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("📑 Сохраненные договоры", callback_data="show_bookmarks")],
+            [InlineKeyboardButton("💾 Сохраненные", callback_data="show_bookmarks")],
             [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
         ])
     )
@@ -187,13 +193,13 @@ async def show_bookmarks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await query.answer()
     if "bookmarks" not in context.user_data or not context.user_data["bookmarks"]:
         await query.message.edit_text(
-            "📑 У вас нет сохраненных договоров.",
+            "💾 У вас нет сохраненных документов.",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]])
         )
         return
 
-    message = "📑 *Сохраненные договоры*:\n\n"
+    message = "💾 *Сохраненные документы*:\n\n"
     keyboard = []
     for i, doc in enumerate(context.user_data["bookmarks"]):
         message += f"{i + 1}. {doc['client_name']} ({doc['template']}, {doc['date']})\n"
@@ -227,11 +233,17 @@ async def generate_bookmark(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 await query.message.reply_document(document=f, filename=filename)
 
             context.user_data["last_document"] = doc
-            keyboard = [[
-                InlineKeyboardButton("📌 В закладки", callback_data="add_bookmark"),
-                InlineKeyboardButton("📅 Изменить дату", callback_data="edit_date"),
-                InlineKeyboardButton("📄 Новый шаблон", callback_data="select_template"),
-            ]]
+            keyboard = [
+                [
+                    InlineKeyboardButton("📌 В закладки", callback_data="add_bookmark"),
+                    InlineKeyboardButton("📅 Изменить дату", callback_data="edit_date"),
+                ],
+                [
+                    InlineKeyboardButton("📄 К шаблонам", callback_data="select_template"),
+                    InlineKeyboardButton("💾 Сохраненные", callback_data="show_bookmarks"),
+                ],
+                [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+            ]
             await query.message.edit_text(
                 "✅ Документ создан!\nВведите имя клиента для генерации следующего договора, либо выберите другое действие:",
                 parse_mode="Markdown",
@@ -301,11 +313,17 @@ async def receive_new_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 await update.message.reply_document(document=f, filename=filename)
 
             context.user_data["last_document"]["date"] = new_date
-            keyboard = [[
-                InlineKeyboardButton("📌 В закладки", callback_data="add_bookmark"),
-                InlineKeyboardButton("📅 Изменить дату", callback_data="edit_date"),
-                InlineKeyboardButton("📄 Новый шаблон", callback_data="select_template"),
-            ]]
+            keyboard = [
+                [
+                    InlineKeyboardButton("📌 В закладки", callback_data="add_bookmark"),
+                    InlineKeyboardButton("📅 Изменить дату", callback_data="edit_date"),
+                ],
+                [
+                    InlineKeyboardButton("📄 К шаблонам", callback_data="select_template"),
+                    InlineKeyboardButton("💾 Сохраненные", callback_data="show_bookmarks"),
+                ],
+                [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+            ]
             await update.message.reply_text(
                 "✅ Документ создан!\nВведите имя клиента для генерации следующего договора, либо выберите другое действие:",
                 parse_mode="Markdown",
