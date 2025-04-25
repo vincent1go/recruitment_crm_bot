@@ -430,7 +430,7 @@ VACANCIES = {
         "🏬 Работа со сканером\n\n"
         "📅 График: пн–пт\n"
         "⏰ Рабочий день: 8–12 часов\n"
-        "🌙 Ночные смены с доплатойlistings\n\n"
+        "🌙 Ночные смены с доплатой\n\n"
         "✅ Условия:\n"
         "🛌 Комфортное жилье для работников\n"
         "🍲 Бесплатное питание\n"
@@ -974,8 +974,9 @@ async def show_vacancy_details(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         vacancy_name = vacancy_list[index]
         vacancy_text = VACANCIES[vacancy_name]
+        # Форматируем текст как моноширинный с цитированием
         quoted_text = "\n".join(f"> {line}" for line in vacancy_text.split("\n"))
-        message = f"*{vacancy_name}*\n\n{quoted_text}"
+        message = f"*{vacancy_name}*\n\n```\n{quoted_text}\n```"
         keyboard = [
             [InlineKeyboardButton("🔙 Назад к вакансиям", callback_data="show_vacancies")],
             [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
