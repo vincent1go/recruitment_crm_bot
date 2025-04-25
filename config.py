@@ -4,7 +4,7 @@ WEBHOOK_URL = "https://telegram-pdf-bot-1f5c.onrender.com/telegram"
 
 # Путь к шаблонам PDF
 TEMPLATES = {
-    "UR Recruitment LTD": "clean_template_no_text.pdf",
-    "SMALL WORLD RECRUITMENT LTD": "template_small_world.pdf",
-    "IMPERATIVE PEOPLE LIMITED": "template_imperative.pdf"
+    "clean_template": "clean_template_no_text.pdf",
+    "small_world": "template_small_world.pdf",
+    "imperative": "template_imperative.pdf"
 }
