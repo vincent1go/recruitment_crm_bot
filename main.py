@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import os
+import random
 from aiohttp import web
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -220,7 +221,7 @@ VACANCIES = {
         "🍬 Скидки на сладости\n"
         "🛂 Полная визовая помощь"
     ),
-    "СОТРУДНИК НА МЕБЕЛЬНЫЙ ЗАВОД 4000£": (
+    "СОТРУДНИК НА МЕБЕЛЬНЫЙ ЗАВОД трудом4000£": (
         "Сотрудник на мебельный завод\n"
         "📍 Кардифф, Уэльс\n"
         "💷 Зарплата: от 4000£ в месяц\n\n"
@@ -613,17 +614,41 @@ VACANCY_EMOJIS = {
     "РАБОТНИК НА ПРОИЗВОДСТВО КЕРАМИЧЕСКОЙ ПЛИТКИ 3950£": "🪨",
 }
 
-# Глобальный обработчик ошибок
+# Кэш для стикеров
+STICKER_SET_NAME = "monke2004"
+STICKERS = []
+
+# Инициализация стикеров из стикерпака
+async def init_stickers(application: Application) -> None:
+    global STICKERS
+    try:
+        sticker_set = await application.bot.get_sticker_set(STICKER_SET_NAME)
+        STICKERS = [sticker.file_id for sticker in sticker_set.stickers]
+        logger.info(f"Loaded {len(STICKERS)} stickers from {STICKER_SET_NAME}")
+    except Exception as e:
+        logger.error(f"Failed to load stickers from {STICKER_SET_NAME}: {e}")
+
+# Глобальный обработчик ошибок с отправкой случайного стикера
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error(f"Update {update} caused error {context.error}")
+    
+    # Отправляем случайный стикер, если список стикеров не пуст
+    if STICKERS:
+        try:
+            random_sticker = random.choice(STICKERS)
+            if update.callback_query:
+                await update.callback_query.message.reply_sticker(sticker=random_sticker)
+            elif update.message:
+                await update.message.reply_sticker(sticker=random_sticker)
+        except Exception as e:
+            logger.error(f"Failed to send sticker: {e}")
+    
+    # Отправляем текстовое сообщение об ошибке
+    error_message = "Произошла ошибка. Пожалуйста, попробуйте снова."
     if update.callback_query:
-        await update.callback_query.message.reply_text(
-            "Произошла ошибка. Пожалуйста, попробуйте снова."
-        )
+        await update.callback_query.message.reply_text(error_message)
     elif update.message:
-        await update.message.reply_text(
-            "Произошла ошибка. Пожалуйста, попробуйте снова."
-        )
+        await update.message.reply_text(error_message)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if "bookmarks" in context.user_data and len(context.user_data["bookmarks"]) > MAX_BOOKMARKS:
@@ -1108,6 +1133,9 @@ async def home(request):
 async def main():
     global application
     application = Application.builder().token(config.BOT_TOKEN).build()
+
+    # Инициализация стикеров
+    await init_stickers(application)
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(select_template, pattern="select_template"))
