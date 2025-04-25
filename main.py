@@ -249,6 +249,7 @@ async def generate_bookmark(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def request_new_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
+    logger.info("Нажата кнопка 'Изменить дату'")
     if "last_document" not in context.user_data:
         await query.message.edit_text("⚠️ Нет документа для редактирования даты.")
         return
@@ -274,10 +275,12 @@ async def validate_date(date_str: str) -> bool:
 
 async def receive_new_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.message.text:
+        logger.warning("Получено обновление без текста сообщения")
         await update.message.reply_text("⚠️ Пожалуйста, введите дату.")
         return
 
     new_date = update.message.text.strip()
+    logger.info(f"Получена дата: {new_date}")
     if not validate_date(new_date):
         await update.message.reply_text(
             "⚠️ Неверный формат даты. Введите дату в формате DD.MM.YYYY (например, 24.04.2025):",
@@ -370,10 +373,12 @@ async def main():
 
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", port=8080)
+    port = int(os.getenv("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port=port)
+    logger.info(f"Запускаем сервер на порту {port}")
     await site.start()
 
-    logger.info("Бот успешно запущен на порту 8080")
+    logger.info("Бот успешно запущен")
     while True:
         await asyncio.sleep(3600)
 
