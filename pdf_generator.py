@@ -12,43 +12,36 @@ logger = logging.getLogger(__name__)
 # Цвет текста (тёмно-серый)
 COLOR = (69 / 255, 69 / 255, 69 / 255)
 
-def текущая_дата_киев() -> str:
-    """Возвращает текущую дату в формате DD.MM.YYYY по часовому поясу Киева."""
-    tz = pytz.timezone("Europe/Kiev")
-    return datetime.now(tz).strftime("%d.%m.%Y")
+def текущая_дата_киев():
+    return datetime.now(pytz.timezone("Europe/Kiev")).strftime("%d.%m.%Y")
 
+def очистить_имя_файла(text):
+    return re.sub(r"[^\w\s-]", "", text, flags=re.UNICODE).strip()
 
-def очистить_имя_файла(text: str) -> str:
-    """Очищает строку для использования в имени файла."""
-    name = re.sub(r"[^\w\s-]", "", text, flags=re.UNICODE).strip()
-    return re.sub(r"\s+", "_", name)
-
-
-def вставить_текст_на_странице(
-    page: fitz.Page,
-    шаблон: str,
-    поиск: str,
-    новый_текст: str,
-    is_date: bool = False,
-    первые_n: int = 0
-) -> bool:
-    """
-    Находит все вхождения `поиск` на странице и вставляет поверх `новый_текст`.
-    Если is_date=True, текст сдвигается влево на 10 пунктов без вертикального смещения.
-    """
-    области = page.search_for(поиск)
+def заменить_текст_на_странице(page, старый_текст, новый_текст, is_date=False, только_первые_n=0):
+    области = page.search_for(старый_текст)
     if not области:
         return False
-    if первые_n > 0:
-        области = области[:первые_n]
+
+    if только_первые_n > 0:
+        области = области[:только_первые_n]
 
     for область in области:
-        # смещение по X: сдвиг влево для даты
-        смещение_x = -10 if is_date else 0
-        # вертикального смещения нет
-        смещение_y = 0
+        расширенная_область = fitz.Rect(
+            область.x0 - 5, область.y0 - 5,
+            область.x1 + 50, область.y1 + 5
+        )
+        page.add_redact_annot(расширенная_область, fill=(1, 1, 1))
+    page.apply_redactions()
+
+    for i, область in enumerate(области):
+        смещение_y = 15 if is_date else 0
+        if i == 1 and len(области) > 1:
+            предыдущая_область = области[i - 1]
+            if abs(область.y0 - предыдущая_область.y0) < 10:
+                смещение_y += 15
         page.insert_text(
-            (область.x0 + смещение_x, область.y0 + смещение_y),
+            (область.x0, область.y0 + смещение_y),
             новый_текст,
             fontname="helv",
             fontsize=11,
@@ -56,68 +49,36 @@ def вставить_текст_на_странице(
         )
     return True
 
-
-def generate_pdf(
-    путь_к_шаблону: str,
-    имя_клиента: str,
-    custom_date: str = None
-) -> str:
-    """
-    Генерирует PDF на основе шаблона:
-    - Вставляет имя клиента вместо поля Client.
-    - Вставляет дату (текущую или custom_date) вместо поля Date.
-    - Без фонового затирания, текст накладывается поверх штампа/подписи.
-    """
-    дата = custom_date or текущая_дата_киев()
-    base = очистить_имя_файла(имя_клиента) or "rezultat"
-    имя_выходного = f"{base}.pdf"
+def generate_pdf(путь_к_шаблону: str, текст: str, custom_date: str = None) -> str:
+    дата = custom_date if custom_date else текущая_дата_киев()
+    имя_файла = очистить_имя_файла(текст) or "результат"
+    путь_к_выходному_файлу = f"{имя_файла}.pdf"
 
     try:
         doc = fitz.open(путь_к_шаблону)
         for page in doc:
-            # Вставка клиента
-            вставить_текст_на_странице(
-                page,
-                путь_к_шаблону,
-                "Client:",
-                f"Client: {имя_клиента}",
-                is_date=False,
-                первые_n=1
-            )
-            # Вставка даты
-            вставить_текст_на_странице(
-                page,
-                путь_к_шаблону,
-                "Date:",
-                f"Date: {дата}",
-                is_date=True,
-                первые_n=2
-            )
-        doc.save(
-            имя_выходного,
-            garbage=4,
-            deflate=True,
-            clean=True
-        )
-        logger.info(f"PDF сохранён: {имя_выходного}")
+            if "template_imperative.pdf" in путь_к_шаблону:
+                if page.number == 0:
+                    заменить_текст_на_странице(page, "Client:", f"Client: {текст}")
+                if page.number == 12:
+                    заменить_текст_на_странице(page, "DATE:", f"DATE: {дата}", is_date=True)
+            elif "template_small_world.pdf" in путь_к_шаблону:
+                if page.number == 0:
+                    заменить_текст_на_странице(page, "Client: ", f"Client: {текст}")
+                if page.number == 4:
+                    заменить_текст_на_странице(page, "Date: ", f"Date: {дата}", is_date=True, только_первые_n=2)
+            else:
+                if page.number == 0:
+                    заменить_текст_на_странице(page, "Client: ", f"Client: {текст}")
+                if page.number == 4:
+                    заменить_текст_на_странице(page, "Date: ", f"Date: {дата}", is_date=True)
+
+        doc.save(путь_к_выходному_файлу, garbage=4, deflate=True, clean=True)
     except Exception as e:
-        logger.error(f"Ошибка генерации PDF: {e}")
+        logger.error(f"Ошибка генерации PDF: {str(e)}")
         raise
     finally:
         doc.close()
 
-    return имя_выходного
+    return путь_к_выходному_файлу
 
-
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser(
-        description="Генерация PDF на основе шаблона с подстановкой клиента и даты без фонового затирания."
-    )
-    parser.add_argument('template', help='Путь к PDF-шаблону')
-    parser.add_argument('client', help='Имя клиента для вставки')
-    parser.add_argument('--date', help='Дата в формате DD.MM.YYYY (по умолчанию киевская)', default=None)
-    args = parser.parse_args()
-
-    output = generate_pdf(args.template, args.client, args.date)
-    print(f"Сгенерирован файл: {output}")
