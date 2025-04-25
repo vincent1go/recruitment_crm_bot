@@ -1,6 +1,9 @@
-BOT_TOKEN = "7511704960:AAH-rIBOQkhzYvTVOp2tiodxzK3vp8GUiYM"
-ADMIN_ID = "6587507343"
-WEBHOOK_URL = "https://telegram-pdf-bot-1f5c.onrender.com/telegram"
+import os
+
+# Токен бота и другие параметры из переменных окружения
+BOT_TOKEN = os.getenv("BOT_TOKEN", "7511704960:AAH-rIBOQkhzYvTVOp2tiodxzK3vp8GUiYM")
+ADMIN_ID = os.getenv("ADMIN_ID", "6587507343")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://telegram-pdf-bot-1f5c.onrender.com/telegram")
 
 # Путь к шаблонам PDF
 TEMPLATES = {
