@@ -15,7 +15,7 @@ services:
       - key: WEBHOOK_URL
         value: "https://telegram-pdf-bot-1f5c.onrender.com/telegram" # Исправьте домен, если нужно
       - key: PYTHON_VERSION
-        value: "3.10"
+        value: "3.11"
     runtimeEnvVars:
       - key: PORT
         value: "8080"
