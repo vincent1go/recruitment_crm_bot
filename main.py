@@ -40,6 +40,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Команда для установки даты
 async def set_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["set_date"] = True  # Устанавливаем флаг, что ждём дату
     await update.message.reply_text(
         "📅 Введите дату в формате ДД.ММ.ГГГГ (например, 15.10.2025):"
     )
@@ -72,6 +73,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
     elif query.data == "set_date":
+        context.user_data["set_date"] = True  # Устанавливаем флаг, что ждём дату
         await query.edit_message_text("📅 Введите дату в формате ДД.ММ.ГГГГ (например, 15.10.2025):")
     elif query.data == "about":
         keyboard = [
@@ -112,9 +114,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Обработка текстового ввода (имя клиента или дата)
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Проверяем, ожидает ли бот дату
-    if "set_date" in context.user_data:
+    if context.user_data.get("set_date"):
         await handle_date(update, context)
-        del context.user_data["set_date"]
+        context.user_data["set_date"] = False  # Сбрасываем флаг
         return
 
     # Проверяем, выбран ли шаблон
@@ -150,7 +152,8 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("setdate", set_date))
     application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.Text & ~filters.Command, handle_text))
+    # Исправляем фильтр: создаём экземпляры фильтров
+    application.add_handler(MessageHandler(filters.Text() & ~filters.Command(), handle_text))
 
     # Настройка вебхука
     port = int(os.getenv("PORT", 8080))
