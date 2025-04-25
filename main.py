@@ -1,7 +1,7 @@
 import os
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from pdf_generator import generate_pdf
 
 # Настройка логирования
@@ -56,7 +56,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
-            "ℹ️ Я бот, который помогает генерировать PDF-документы на основе шаблонов.\n"
+            "ℹ️ Я бот, который помогает генерировать PDF-документов на основе шаблонов.\n"
             "Выбери шаблон, укажи данные, и я создам документ для тебя! 🚀",
             reply_markup=reply_markup
         )
@@ -129,3 +129,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
