@@ -4,25 +4,19 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from pdf_generator import generate_pdf
+import config
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Токен бота из переменных окружения
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# Проверка токена бота
+BOT_TOKEN = config.BOT_TOKEN
 if not BOT_TOKEN:
     raise ValueError("Не задан BOT_TOKEN в переменных окружения")
 
-# ID стикера (замени на свой)
+# ID стикера
 SUCCESS_STICKER_ID = "CAACAgIAAxkBAAIBJ2Yv5z8AAdK5AAH7Y2e4UAAHsXhJAAIJAAMuYIgkAAH7Y2e4UAAHsXhJAAI"
-
-# Определяем доступные шаблоны
-TEMPLATES = {
-    "clean_template": "clean_template_no_text.pdf",
-    "small_world": "template_small_world.pdf",
-    "imperative": "template_imperative.pdf"
-}
 
 # Приветственное сообщение
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -40,7 +34,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Команда для установки даты
 async def set_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["set_date"] = True  # Устанавливаем флаг, что ждём дату
+    context.user_data["set_date"] = True
     await update.message.reply_text(
         "📅 Введите дату в формате ДД.ММ.ГГГГ (например, 15.10.2025):"
     )
@@ -73,7 +67,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
     elif query.data == "set_date":
-        context.user_data["set_date"] = True  # Устанавливаем флаг, что ждём дату
+        context.user_data["set_date"] = True
         await query.edit_message_text("📅 Введите дату в формате ДД.ММ.ГГГГ (например, 15.10.2025):")
     elif query.data == "about":
         keyboard = [
@@ -86,7 +80,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
     elif query.data == "start_over":
-        context.user_data.clear()  # Очищаем данные пользователя
+        context.user_data.clear()
         keyboard = [
             [InlineKeyboardButton("Выбрать шаблон 📄", callback_data="select_template")],
             [InlineKeyboardButton("Установить дату 📅", callback_data="set_date")],
@@ -113,13 +107,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Обработка текстового ввода (имя клиента или дата)
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Проверяем, ожидает ли бот дату
     if context.user_data.get("set_date"):
         await handle_date(update, context)
-        context.user_data["set_date"] = False  # Сбрасываем флаг
+        context.user_data["set_date"] = False
         return
 
-    # Проверяем, выбран ли шаблон
     if "selected_template" not in context.user_data:
         await update.message.reply_text("❌ Сначала выберите шаблон! Используйте /start.")
         return
@@ -129,13 +121,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     custom_date = context.user_data.get("custom_date")
     
     try:
-        template_path = TEMPLATES[template_key]
+        template_path = config.TEMPLATES[template_key]
         pdf_path = generate_pdf(template_path, client_name, custom_date)
         with open(pdf_path, "rb") as pdf_file:
             await update.message.reply_document(document=pdf_file, filename=f"{client_name}.pdf")
-        os.remove(pdf_path)  # Удаляем временный файл
+        os.remove(pdf_path)
         await update.message.reply_text("✅ PDF успешно создан и отправлен!")
-        # Отправляем стикер
         await update.message.reply_sticker(sticker=SUCCESS_STICKER_ID)
     except Exception as e:
         logger.error(f"Ошибка генерации PDF: {str(e)}")
@@ -152,7 +143,6 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("setdate", set_date))
     application.add_handler(CallbackQueryHandler(button))
-    # Исправляем фильтр: создаём экземпляры фильтров
     application.add_handler(MessageHandler(filters.Text() & ~filters.Command(), handle_text))
 
     # Настройка вебхука
@@ -161,7 +151,7 @@ def main():
         listen="0.0.0.0",
         port=port,
         url_path="/telegram",
-        l=f"https://telegram-pdf-bot-1f5c.onrender.com/telegram"
+        webhook_url=config.WEBHOOK_URL
     )
     logger.info(f"Запускаем сервер на порту {port}")
     logger.info("Бот успешно запущен")
