@@ -161,7 +161,7 @@ def main():
         listen="0.0.0.0",
         port=port,
         url_path="/telegram",
-        webhook_url=f"https://telegram-pdf-bot-zu70.onrender.com/telegram"
+        l=f"https://telegram-pdf-bot-1f5c.onrender.com/telegram"
     )
     logger.info(f"Запускаем сервер на порту {port}")
     logger.info("Бот успешно запущен")
