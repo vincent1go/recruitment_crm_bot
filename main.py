@@ -7,6 +7,7 @@ from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, ContextTypes, filters
 )
+from telegram.error import BadRequest
 import config
 from pdf_generator import generate_pdf
 import re
@@ -429,7 +430,7 @@ VACANCIES = {
         "🏬 Работа со сканером\n\n"
         "📅 График: пн–пт\n"
         "⏰ Рабочий день: 8–12 часов\n"
-        "🌙 Ночные смены с доплатой\n\n"
+        "🌙 Ночные смены с доплатойlistings\n\n"
         "✅ Условия:\n"
         "🛌 Комфортное жилье для работников\n"
         "🍲 Бесплатное питание\n"
@@ -612,6 +613,18 @@ VACANCY_EMOJIS = {
     "РАБОТНИК НА ПРОИЗВОДСТВО КЕРАМИЧЕСКОЙ ПЛИТКИ 3950£": "🪨",
 }
 
+# Глобальный обработчик ошибок
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.error(f"Update {update} caused error {context.error}")
+    if update.callback_query:
+        await update.callback_query.message.reply_text(
+            "Произошла ошибка. Пожалуйста, попробуйте снова."
+        )
+    elif update.message:
+        await update.message.reply_text(
+            "Произошла ошибка. Пожалуйста, попробуйте снова."
+        )
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if "bookmarks" in context.user_data and len(context.user_data["bookmarks"]) > MAX_BOOKMARKS:
         context.user_data["bookmarks"] = context.user_data["bookmarks"][-MAX_BOOKMARKS:]
@@ -644,7 +657,11 @@ async def about(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Автор: @sennudeswithboobs"
     )
     keyboard = [[InlineKeyboardButton("🏠 Назад", callback_data="main_menu")]]
-    await query.message.edit_text(message, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    try:
+        await query.message.edit_text(message, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    except BadRequest as e:
+        logger.error(f"Failed to edit message in about: {e}")
+        await query.message.reply_text("Ошибка при обновлении сообщения.")
 
 async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -660,7 +677,11 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             InlineKeyboardButton("👷 Вакансии", callback_data="show_vacancies"),
         ],
     ]
-    await query.message.edit_text(message, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    try:
+        await query.message.edit_text(message, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    except BadRequest as e:
+        logger.error(f"Failed to edit message in main_menu: {e}")
+        await query.message.reply_text("Ошибка при обновлении сообщения.")
 
 async def select_template(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -670,8 +691,12 @@ async def select_template(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     for name in config.TEMPLATES.keys():
         keyboard.append([InlineKeyboardButton(name, callback_data=f"template_{name}")])
     keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="cancel")])
-    await query.message.edit_text(message, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
-    context.user_data["state"] = SELECTING_TEMPLATE
+    try:
+        await query.message.edit_text(message, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        context.user_data["state"] = SELECTING_TEMPLATE
+    except BadRequest as e:
+        logger.error(f"Failed to edit message in select_template: {e}")
+        await query.message.reply_text("Ошибка при обновлении сообщения.")
 
 async def template_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -682,25 +707,37 @@ async def template_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
     context.user_data["template"] = name
     context.user_data["state"] = ENTERING_TEXT
-    await query.message.edit_text(
-        f"✅ Шаблон выбран: *{name}*\n\nВведите имя клиента:",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Сменить шаблон", callback_data="select_template")],
-            [InlineKeyboardButton("❌ Отмена", callback_data="cancel")],
-        ])
-    )
+    try:
+        await query.message.edit_text(
+            f"✅ Шаблон выбран: *{name}*\n\nВведите имя клиента:",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Сменить шаблон", callback_data="select_template")],
+                [InlineKeyboardButton("❌ Отмена", callback_data="cancel")],
+            ])
+        )
+    except BadRequest as e:
+        logger.error(f"Failed to edit message in template_selected: {e}")
+        await query.message.reply_text("Ошибка при обновлении сообщения.")
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
     context.user_data.clear()
-    await query.message.edit_text("❌ Отменено. Выберите действие:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("📄 Шаблоны", callback_data="select_template")],
-        [InlineKeyboardButton("ℹ️ О боте", callback_data="about")],
-        [InlineKeyboardButton("💾 Сохраненные", callback_data="show_bookmarks")],
-        [InlineKeyboardButton("👷 Вакансии", callback_data="show_vacancies")],
-    ]))
+    try:
+        await query.message.edit_text(
+            "❌ Отменено. Выберите действие:",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📄 Шаблоны", callback_data="select_template")],
+                [InlineKeyboardButton("ℹ️ О боте", callback_data="about")],
+                [InlineKeyboardButton("💾 Сохраненные", callback_data="show_bookmarks")],
+                [InlineKeyboardButton("👷 Вакансии", callback_data="show_vacancies")],
+            ])
+        )
+    except BadRequest as e:
+        logger.error(f"Failed to edit message in cancel: {e}")
+        await query.message.reply_text("Ошибка при обновлении сообщения.")
 
 async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if "template" not in context.user_data:
@@ -780,15 +817,19 @@ async def add_bookmark(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     document = context.user_data["last_document"]
     context.user_data["bookmarks"].append(document)
     bookmarks_count = len(context.user_data["bookmarks"])
-    await query.message.edit_text(
-        f"📌 Документ для *{document['client_name']}* добавлен в закладки!\n"
-        f"У вас {bookmarks_count} сохраненных документов из {MAX_BOOKMARKS}.",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("💾 Сохраненные", callback_data="show_bookmarks")],
-            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
-        ])
-    )
+    try:
+        await query.message.edit_text(
+            f"📌 Документ для *{document['client_name']}* добавлен в закладки!\n"
+            f"У вас {bookmarks_count} сохраненных документов из {MAX_BOOKMARKS}.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💾 Сохраненные", callback_data="show_bookmarks")],
+                [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+            ])
+        )
+    except BadRequest as e:
+        logger.error(f"Failed to edit message in add_bookmark: {e}")
+        await query.message.reply_text("Ошибка при обновлении сообщения.")
 
 async def delete_all_bookmarks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -805,12 +846,16 @@ async def delete_all_bookmarks(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     context.user_data["bookmarks"] = []
-    await query.message.edit_text(
-        f"🗑️ Все сохраненные документы удалены.\n"
-        f"У вас 0 сохраненных документов из {MAX_BOOKMARKS}.",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]])
-    )
+    try:
+        await query.message.edit_text(
+            f"🗑️ Все сохраненные документы удалены.\n"
+            f"У вас 0 сохраненных документов из {MAX_BOOKMARKS}.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]])
+        )
+    except BadRequest as e:
+        logger.error(f"Failed to edit message in delete_all_bookmarks: {e}")
+        await query.message.reply_text("Ошибка при обновлении сообщения.")
 
 async def show_bookmarks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -840,7 +885,11 @@ async def show_bookmarks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     keyboard.append([InlineKeyboardButton("🗑️ Удалить все", callback_data="delete_all_bookmarks")])
     keyboard.append([InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")])
 
-    await query.message.edit_text(message, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    try:
+        await query.message.edit_text(message, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    except BadRequest as e:
+        logger.error(f"Failed to edit message in show_bookmarks: {e}")
+        await query.message.reply_text("Ошибка при обновлении сообщения.")
 
 async def generate_bookmark(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -894,28 +943,50 @@ async def show_vacancies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await query.answer()
     message = "👷 *Вакансии*:\n\nВыберите вакансию:"
     keyboard = []
-    for vacancy_name in VACANCIES.keys():
+    vacancy_list = list(VACANCIES.keys())
+    
+    for i, vacancy_name in enumerate(vacancy_list):
         emoji = VACANCY_EMOJIS.get(vacancy_name, "")
-        keyboard.append([InlineKeyboardButton(f"{emoji} {vacancy_name}", callback_data=f"vacancy_{vacancy_name}")])
+        callback_data = f"vacancy_{i}"
+        logger.info(f"Creating button for {vacancy_name} with callback_data: {callback_data}")
+        if len(callback_data.encode("utf-8")) > 64:
+            logger.error(f"Callback data too long for {vacancy_name}: {callback_data}")
+            await query.message.reply_text("Ошибка: данные кнопки слишком длинные.")
+            return
+        keyboard.append([InlineKeyboardButton(f"{emoji} {vacancy_name}", callback_data=callback_data)])
+    
     keyboard.append([InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")])
-    await query.message.edit_text(message, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    try:
+        await query.message.edit_text(message, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    except BadRequest as e:
+        logger.error(f"Failed to edit message in show_vacancies: {e}")
+        await query.message.reply_text("Ошибка при отображении вакансий. Попробуйте снова.")
 
 async def show_vacancy_details(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
-    vacancy_name = query.data.replace("vacancy_", "")
-    if vacancy_name not in VACANCIES:
-        await query.message.edit_text("⚠️ Вакансия не найдена.")
-        return
-    vacancy_text = VACANCIES[vacancy_name]
-    # Форматируем текст как цитату, добавляя > перед каждой строкой
-    quoted_text = "\n".join(f"> {line}" for line in vacancy_text.split("\n"))
-    message = f"*{vacancy_name}*\n\n{quoted_text}"
-    keyboard = [
-        [InlineKeyboardButton("🔙 Назад к вакансиям", callback_data="show_vacancies")],
-        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
-    ]
-    await query.message.edit_text(message, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    try:
+        index = int(query.data.replace("vacancy_", ""))
+        vacancy_list = list(VACANCIES.keys())
+        if index < 0 or index >= len(vacancy_list):
+            await query.message.edit_text("⚠️ Вакансия не найдена.")
+            return
+        vacancy_name = vacancy_list[index]
+        vacancy_text = VACANCIES[vacancy_name]
+        quoted_text = "\n".join(f"> {line}" for line in vacancy_text.split("\n"))
+        message = f"*{vacancy_name}*\n\n{quoted_text}"
+        keyboard = [
+            [InlineKeyboardButton("🔙 Назад к вакансиям", callback_data="show_vacancies")],
+            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+        ]
+        await query.message.edit_text(message, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    except ValueError:
+        logger.error(f"Invalid vacancy index in callback_data: {query.data}")
+        await query.message.edit_text("⚠️ Ошибка: некорректные данные вакансии.")
+    except BadRequest as e:
+        logger.error(f"Failed to edit message in show_vacancy_details: {e}")
+        await query.message.reply_text("Ошибка при отображении деталей вакансии.")
 
 async def request_new_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -926,22 +997,32 @@ async def request_new_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     context.user_data["state"] = EDITING_DATE
-    await query.message.edit_text(
-        "📅 Введите новую дату в формате DD.MM.YYYY (например, 24.04.2025):",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
-        ])
-    )
+    try:
+        await query.message.edit_text(
+            "📅 Введите новую дату в формате DD.MM.YYYY (например, 24.04.2025):",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+            ])
+        )
+    except BadRequest as e:
+        logger.error(f"Failed to edit message in request_new_date: {e}")
+        await query.message.reply_text("Ошибка при обновлении сообщения.")
 
 async def validate_date(date_str: str) -> bool:
     pattern = r"^\d{2}\.\d{2}\.\d{4}$"
     if not re.match(pattern, date_str):
+        logger.warning(f"Invalid date format: {date_str}")
         return False
     try:
+        day, month, year = map(int, date_str.split("."))
+        if not (1 <= day <= 31 and 1 <= month <= 12 and 1900 <= year <= 2100):
+            logger.warning(f"Invalid date values: {date_str}")
+            return False
         datetime.strptime(date_str, "%d.%m.%Y")
         return True
     except ValueError:
+        logger.warning(f"Date parsing error: {date_str}")
         return False
 
 async def receive_new_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -952,7 +1033,7 @@ async def receive_new_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     new_date = update.message.text.strip()
     logger.info(f"Получена дата: {new_date}")
-    if not validate_date(new_date):
+    if not await validate_date(new_date):
         await update.message.reply_text(
             "⚠️ Неверный формат даты. Введите дату в формате DD.MM.YYYY (например, 24.04.2025):",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data="cancel")]])
@@ -1041,6 +1122,7 @@ async def main():
     application.add_handler(CallbackQueryHandler(show_vacancy_details, pattern="vacancy_.*"))
     application.add_handler(CallbackQueryHandler(delete_all_bookmarks, pattern="delete_all_bookmarks"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receive_text))
+    application.add_error_handler(error_handler)
 
     await application.initialize()
     await application.bot.set_webhook(url=config.WEBHOOK_URL)
